@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="deletebutton" type="id" />
+    <item name="plusbutton" type="id" />
+    <item name="quantity" type="id" />
+    <item name="minusbutton" type="id" />
+</resources>
