@@ -1,14 +1,99 @@
-name: Hello Afjal
+name: Update iOS Info.plist & Entitlements
 
 on:
-  push:
-    branches: [ "main" ]
   workflow_dispatch:
+    inputs:
+      display_name:
+        description: "CFBundleDisplayName (App Name)"
+        required: true
+      bundle_id:
+        description: "CFBundleIdentifier (Package Name)"
+        required: true
+      domain_no_www:
+        description: "Domain WITHOUT www (example: myapp.com)"
+        required: true
+      domain_with_www:
+        description: "Domain WITH www (example: www.myapp.com)"
+        required: true
 
 jobs:
-  say-hello:
-    runs-on: ubuntu-latest
+  update-ios-files:
+    runs-on: macos-latest
 
     steps:
-      - name: Print message
-        run: echo "hello Afjal"
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Update Info.plist & Runner.entitlements
+        shell: bash
+        run: |
+          #!/bin/bash
+
+          INFO_PLIST="ios/Runner/Info.plist"
+          ENTITLEMENTS_FILE="ios/Runner/Runner.entitlements"
+
+          echo "===================================="
+          echo "    iOS Info.plist + Entitlements"
+          echo "===================================="
+
+          # Check files exist
+          if [ ! -f "$INFO_PLIST" ]; then
+            echo "❌ Info.plist not found!"
+            exit 1
+          fi
+
+          if [ ! -f "$ENTITLEMENTS_FILE" ]; then
+            echo "❌ Runner.entitlements not found!"
+            exit 1
+          fi
+
+          NEW_DISPLAY_NAME="${{ inputs.display_name }}"
+          NEW_BUNDLE_ID="${{ inputs.bundle_id }}"
+          DOMAIN_NO_WWW="${{ inputs.domain_no_www }}"
+          DOMAIN_WITH_WWW="${{ inputs.domain_with_www }}"
+
+          # Escape for sed
+          esc() { echo "$1" | sed -e 's/[\/&]/\\&/g'; }
+
+          NEW_DISPLAY_NAME_ESCAPED=$(esc "$NEW_DISPLAY_NAME")
+          NEW_BUNDLE_ID_ESCAPED=$(esc "$NEW_BUNDLE_ID")
+          DOMAIN_NO_WWW_ESCAPED=$(esc "$DOMAIN_NO_WWW")
+          DOMAIN_WITH_WWW_ESCAPED=$(esc "$DOMAIN_WITH_WWW")
+
+          echo "Updating Info.plist..."
+
+          # Backup files
+          cp "$INFO_PLIST" "$INFO_PLIST.bak"
+          cp "$ENTITLEMENTS_FILE" "$ENTITLEMENTS_FILE.bak"
+
+          # CFBundleDisplayName
+          sed -i '' "/<key>CFBundleDisplayName<\/key>/{n;s|<string>.*</string>|<string>$NEW_DISPLAY_NAME_ESCAPED</string>|;}" "$INFO_PLIST"
+
+          # CFBundleIdentifier
+          sed -i '' "/<key>CFBundleIdentifier<\/key>/{n;s|<string>.*</string>|<string>$NEW_BUNDLE_ID_ESCAPED</string>|;}" "$INFO_PLIST"
+
+          # Associated Domains (Info.plist)
+          awk -v d1="applinks:$DOMAIN_NO_WWW_ESCAPED" \
+              -v d2="applinks:$DOMAIN_WITH_WWW_ESCAPED" '
+            /<key>com.apple.developer.associated-domains<\/key>/ {
+              print
+              getline; print
+              getline; sub(/<string>.*<\/string>/, "<string>" d1 "</string>"); print
+              getline; sub(/<string>.*<\/string>/, "<string>" d2 "</string>"); print
+              next
+            }
+            { print }
+          ' "$INFO_PLIST" > "${INFO_PLIST}.tmp"
+
+          mv "${INFO_PLIST}.tmp" "$INFO_PLIST"
+
+          echo "Updating Runner.entitlements..."
+
+          # Associated Domains (Entitlements)
+          sed -i '' "/<key>com.apple.developer.associated-domains<\/key>/{n;n;s|<string>.*</string>|<string>applinks:$DOMAIN_NO_WWW_ESCAPED</string>|;}" "$ENTITLEMENTS_FILE"
+
+          echo "✅ iOS files updated successfully!"
+          echo "Backups created:"
+          echo "- Info.plist.bak"
+          echo "- Runner.entitlements.bak"
+          echo "===================================="
